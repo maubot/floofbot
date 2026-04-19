@@ -12,10 +12,10 @@ jobs:
         python-version: "3.14"
     - uses: isort/isort-action@master
       with:
-        sortPaths: "./github"
+        sortPaths: "."
     - uses: psf/black@stable
       with:
-        src: "./github"
+        src: "."
     - name: pre-commit
       run: |
         pip install pre-commit
