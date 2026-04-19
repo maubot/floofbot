@@ -1,0 +1,6 @@
+floof: "<img src='mxc://9f.fi/f' data-mx-emoticon height=32>"
+count_overflow_message: >
+  Floof overflow <img src="mxc://9f.fi/e" alt=":neocat_floof_explode:" title=":neocat_floof_explode:" data-mx-emoticon height="32">
+ratelimit_overflow_reaction: mxc://9f.fi/e
+ratelimit_capacity: 2.5
+ratelimit_refill_per: 300

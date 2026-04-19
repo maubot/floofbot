@@ -1,0 +1,12 @@
+id: bot.mau.floof
+version: 1.0.0
+modules:
+- floofbot
+main_class: FloofBot
+maubot: 0.1.0
+database: true
+database_type: asyncpg
+config: true
+license: AGPL-3.0-or-later
+extra_files:
+  - "base-config.yaml"
