@@ -56,6 +56,21 @@ async def upgrade_v1(conn: Connection, scheme: Scheme) -> None:
     """)
 
 
+@upgrade_table.register(description="Add individual floofs table", upgrades_to=2)
+async def upgrade_v2(conn: Connection, scheme: Scheme) -> None:
+    await conn.execute("""
+        CREATE TABLE floof (
+            event_id  TEXT    NOT NULL,
+            floofee   TEXT    NOT NULL,
+            floofer   TEXT    NOT NULL,
+            timestamp BIGINT  NOT NULL,
+            count     INTEGER NOT NULL,
+
+            PRIMARY KEY (event_id, floofee)
+        );
+    """)
+
+
 class FloofBot(Plugin):
     database: Database
     flood_tracker: dict[UserID, RateLimitBucket]
@@ -199,6 +214,7 @@ class FloofBot(Plugin):
             return await event.react(self.ratelimit_overflow_reaction)
         target_html_parts = []
         per_user_floofs = int(floof_count / len(mentions))
+        current_time = int(time.time() * 1000)
         async with self.database.acquire() as conn, conn.transaction():
             await conn.execute(
                 "INSERT INTO flooferboard (user_id, count) VALUES ($1, $2) "
@@ -214,6 +230,14 @@ class FloofBot(Plugin):
                     "INSERT INTO floofeeboard (user_id, count) VALUES ($1, $2) "
                     "ON CONFLICT (user_id) DO UPDATE SET count=floofeeboard.count + excluded.count",
                     user_id,
+                    per_user_floofs,
+                )
+                await conn.execute(
+                    "INSERT INTO floof (event_id, floofee, floofer, timestamp, count) VALUES ($1, $2, $3, $4, $5)",
+                    event.event_id,
+                    user_id,
+                    event.sender,
+                    current_time,
                     per_user_floofs,
                 )
 
