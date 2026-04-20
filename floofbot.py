@@ -192,6 +192,8 @@ class FloofBot(Plugin):
             and event.room_id == "!c10y-QhEklSZsfs-x96D7gFJy1v0b8BSsCapmE5XpAU"
             and "@kaesa:neoshadow.co" not in mentions
         ):
+            if not self._allow_ratelimit(event.sender, count=-50):
+                return await event.react(self.ratelimit_overflow_reaction)
             return await event.reply(
                 '<img src="mxc://9f.fi/a" data-mx-emoticon height="32" alt=":neocat_floof:" title=":neocat_floof:"> '
                 "Floofing the official Continuwuity pet mascot is required (see <https://forgejo.ellis.link/continuwuation/continuwuity/pulls/1600>)",
@@ -200,7 +202,7 @@ class FloofBot(Plugin):
         was_encrypted = event.get("mautrix", {}).get("was_encrypted", False)
         limit = 950 if was_encrypted else 1200
         if floof_count > limit:
-            if not self._allow_ratelimit(event.sender, count=-50):
+            if not self._allow_ratelimit(event.sender, count=-25):
                 return await event.react(self.ratelimit_overflow_reaction)
             return await event.reply(self.count_overflow_message, allow_html=True, markdown=False)
         if not self._allow_ratelimit(event.sender, floof_count):
