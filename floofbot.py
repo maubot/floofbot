@@ -129,7 +129,7 @@ class FloofBot(Plugin):
             )
         return True
 
-    @command.new("furrylimit")
+    @command.new("furrylimit", aliases=["fluffylimit", "flooflimit"])
     async def furry_limit(self, event: MessageEvent) -> None:
         if event.sender in self.flood_tracker:
             count, _ = self._get_bucket(event.sender, save=False)
@@ -149,7 +149,9 @@ class FloofBot(Plugin):
                 strongend = "</strong>"
             yield f'<br><strong>#{i+1}:</strong> {strong}<a href="{MatrixURI.build(user_id).matrix_to_url}">{html.escape(user_id)}</a>: {count}{strongend}</li>'
 
-    @command.new("floofboard", aliases=["furryboard", "flooferboard", "floofeeboard"])
+    @command.new(
+        "floofboard", aliases=["furryboard", "fluffyboard", "flooferboard", "floofeeboard"]
+    )
     async def floofboard(self, event: MessageEvent) -> None:
         async with self.database.acquire() as conn:
             floofers = await conn.fetch(
