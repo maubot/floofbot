@@ -130,7 +130,10 @@ class FloofBot(Plugin):
         return True
 
     @command.new("furrylimit", aliases=["fluffylimit", "flooflimit", "floolimit"])
-    async def furry_limit(self, event: MessageEvent) -> None:
+    @command.argument("unused", pass_raw=True, required=False)
+    async def furry_limit(self, event: MessageEvent, unused: str = "") -> None:
+        if unused == ":3":
+            await event.react(":3")
         if event.sender in self.flood_tracker:
             count, _ = self._get_bucket(event.sender, save=False)
             await event.react(f"{count:.2f}")
@@ -161,7 +164,10 @@ class FloofBot(Plugin):
         "floofboard",
         aliases=["flooboard", "furryboard", "fluffyboard", "flooferboard", "floofeeboard"],
     )
-    async def floofboard(self, event: MessageEvent) -> None:
+    @command.argument("unused", pass_raw=True, required=False)
+    async def floofboard(self, event: MessageEvent, unused: str = "") -> None:
+        if unused == ":3":
+            await event.react(":3")
         async with self.database.acquire() as conn:
             floofers = await conn.fetch(
                 "SELECT user_id, count FROM flooferboard ORDER BY count DESC"
