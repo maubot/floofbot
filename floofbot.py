@@ -138,8 +138,9 @@ class FloofBot(Plugin):
             await event.react(f"{self.ratelimit_capacity:.2f}")
 
     def _make_floof_list(
-        self, items: list[tuple[UserID, str]], own_user_id: UserID
+        self, items: list[tuple[UserID, int]], own_user_id: UserID
     ) -> Iterable[str]:
+        total_floofs = sum(count for _, count in items)
         for i, (user_id, count) in enumerate(items):
             if i > 4 and user_id != own_user_id:
                 continue
@@ -147,7 +148,7 @@ class FloofBot(Plugin):
             if user_id == own_user_id:
                 strong = "<strong>"
                 strongend = "</strong>"
-            yield f'<br><strong>#{i+1}:</strong> {strong}<a href="{MatrixURI.build(user_id).matrix_to_url}">{html.escape(user_id)}</a>: {count}{strongend}</li>'
+            yield f'<br>{strong}#{i+1}: <a href="{MatrixURI.build(user_id).matrix_to_url}">{html.escape(user_id)}</a>: {count} ({count / total_floofs * 100:.1f}%){strongend}</li>'
 
     @command.new("floofboars")
     async def floofboars(self, event: MessageEvent) -> None:
