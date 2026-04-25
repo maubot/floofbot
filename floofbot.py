@@ -137,6 +137,9 @@ class FloofBot(Plugin):
         else:
             await event.react(f"{self.ratelimit_capacity:.2f}")
 
+    def _make_mention(self, user_id: UserID) -> str:
+        return f'<a href="{MatrixURI.build(user_id).matrix_to_url}">{html.escape(user_id)}</a>'
+
     def _make_floof_list(
         self, items: list[tuple[UserID, int]], own_user_id: UserID
     ) -> Iterable[str]:
@@ -148,7 +151,7 @@ class FloofBot(Plugin):
             if user_id == own_user_id:
                 strong = "<strong>"
                 strongend = "</strong>"
-            yield f'<br>{strong}#{i+1}: <a href="{MatrixURI.build(user_id).matrix_to_url}">{html.escape(user_id)}</a>: {count} ({count / total_floofs * 100:.1f}%){strongend}</li>'
+            yield f"<br>{strong}#{i+1}: {self._make_mention(user_id)}: {count} ({count / total_floofs * 100:.1f}%){strongend}</li>"
 
     @command.new("floofboars")
     async def floofboars(self, event: MessageEvent) -> None:
@@ -166,6 +169,14 @@ class FloofBot(Plugin):
             floofees = await conn.fetch(
                 "SELECT user_id, count FROM floofeeboard ORDER BY count DESC"
             )
+            own_top_floofee = await conn.fetchrow(
+                "SELECT floofee AS user_id, SUM(count) AS count FROM floof WHERE floofer=$1 GROUP BY 1 ORDER BY 2 DESC LIMIT 1",
+                event.sender,
+            )
+            own_top_floofer = await conn.fetchrow(
+                "SELECT floofer AS user_id, SUM(count) AS count FROM floof WHERE floofee=$1 GROUP BY 1 ORDER BY 2 DESC LIMIT 1",
+                event.sender,
+            )
 
         output = [
             "<p>",
@@ -174,6 +185,18 @@ class FloofBot(Plugin):
             "</p><p>",
             f"<b>Floofers</b> ({len(floofers)} total users)",
             *self._make_floof_list(floofers, event.sender),
+            "</p><p>",
+            (
+                f"Your top floofer is {self._make_mention(own_top_floofer["user_id"])} ({own_top_floofer["count"]} floofs)"
+                if own_top_floofer
+                else "You haven't been floofed yet"
+            ),
+            "<br>",
+            (
+                f"Your top floofee is {self._make_mention(own_top_floofee["user_id"])} ({own_top_floofee["count"]} floofs)"
+                if own_top_floofee
+                else "You haven't floofed anyone yet"
+            ),
             "</p>",
         ]
         await event.reply(
