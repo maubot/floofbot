@@ -247,14 +247,17 @@ class FloofBot(Plugin):
             )
         was_encrypted = event.get("mautrix", {}).get("was_encrypted", False)
         limit = 950 if was_encrypted else 1200
+        cost_multiplier = 1
         if event.sender != "@kaesa:neoshadow.co" and "@kaesa:neoshadow.co" not in mentions:
             limit = 200
-        if floof_count > limit:
-            if not self._allow_ratelimit(event.sender, 0.75):
-                return await event.react(self.ratelimit_overflow_reaction)
-            return await event.reply(self.count_overflow_message, allow_html=True, markdown=False)
-        if not self._allow_ratelimit(event.sender, self._floof_cost(floof_count)):
+            cost_multiplier = 1.2
+        if not self._allow_ratelimit(
+            event.sender,
+            0.75 if floof_count > limit else (self._floof_cost(floof_count) * cost_multiplier),
+        ):
             return await event.react(self.ratelimit_overflow_reaction)
+        if floof_count > limit:
+            return await event.reply(self.count_overflow_message, allow_html=True, markdown=False)
         target_html_parts = []
         per_user_floofs = int(floof_count / len(mentions))
         current_time = int(time.time() * 1000)
