@@ -121,6 +121,8 @@ class FloofBot(Plugin):
         bucket = self._get_bucket(user_id)
         # This intentionally checks against 1 instead of tokens_to_use: going negative is allowed
         if bucket.count < 1:
+            # Overdraft fee
+            bucket.count -= 0.25
             return False
         bucket.count -= tokens_to_use
         return True
