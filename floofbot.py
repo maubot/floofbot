@@ -101,32 +101,29 @@ class FloofBot(Plugin):
         self.count_overflow_message = self.config["count_overflow_message"]
         self.floof_html = self.config["floof"]
 
-    def _get_bucket(self, user_id: UserID, save: bool) -> tuple[float, RateLimitBucket]:
+    def _get_bucket(self, user_id: UserID) -> RateLimitBucket:
         now = time.monotonic()
-        bucket = self.flood_tracker[user_id]
-        time_passed = now - bucket.last_timestamp
-        tokens_to_add = time_passed * self.ratelimit_rate
-        count = min(self.ratelimit_capacity, bucket.count + tokens_to_add)
-        if save:
+        try:
+            bucket = self.flood_tracker[user_id]
+        except KeyError:
+            bucket = self.flood_tracker[user_id] = RateLimitBucket(
+                user_id=user_id,
+                last_timestamp=now,
+                count=self.ratelimit_capacity,
+            )
+        else:
+            tokens_to_add = (now - bucket.last_timestamp) * self.ratelimit_rate
+            bucket.count = min(self.ratelimit_capacity, bucket.count + tokens_to_add)
             bucket.last_timestamp = now
-            bucket.count = count
-        return count, bucket
+        return bucket
 
     def _allow_ratelimit(self, user_id: UserID, count: int = 0) -> bool:
+        bucket = self._get_bucket(user_id)
+        # This intentionally checks against 1 instead of tokens_to_use: going negative is allowed
+        if bucket.count < 1:
+            return False
         tokens_to_use = 1 + max(count * 0.01, -1)
-
-        if user_id in self.flood_tracker:
-            _, bucket = self._get_bucket(user_id, save=True)
-            # This intentionally checks against 1 instead of tokens_to_use: going negative is allowed
-            if bucket.count < 1:
-                return False
-            bucket.count -= tokens_to_use
-        else:
-            self.flood_tracker[user_id] = RateLimitBucket(
-                user_id=user_id,
-                last_timestamp=time.monotonic(),
-                count=self.ratelimit_capacity - tokens_to_use,
-            )
+        bucket.count -= tokens_to_use
         return True
 
     @command.new("furrylimit", aliases=["fluffylimit", "flooflimit", "floolimit"])
@@ -134,11 +131,9 @@ class FloofBot(Plugin):
     async def furry_limit(self, event: MessageEvent, unused: str = "") -> None:
         if unused == ":3":
             await event.react(":3")
-        if event.sender in self.flood_tracker:
-            count, _ = self._get_bucket(event.sender, save=False)
-            await event.react(f"{count:.2f}")
-        else:
-            await event.react(f"{self.ratelimit_capacity:.2f}")
+        bucket = self._get_bucket(event.sender)
+        bucket.count -= 0.1
+        await event.react(f"{bucket.count:.2f}")
 
     def _make_mention(self, user_id: UserID) -> str:
         return f'<a href="{MatrixURI.build(user_id).matrix_to_url}">{html.escape(user_id)}</a>'
