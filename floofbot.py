@@ -117,12 +117,11 @@ class FloofBot(Plugin):
             bucket.last_timestamp = now
         return bucket
 
-    def _allow_ratelimit(self, user_id: UserID, count: int = 0) -> bool:
+    def _allow_ratelimit(self, user_id: UserID, tokens_to_use: float) -> bool:
         bucket = self._get_bucket(user_id)
         # This intentionally checks against 1 instead of tokens_to_use: going negative is allowed
         if bucket.count < 1:
             return False
-        tokens_to_use = 1 + max(count * 0.01, -1)
         bucket.count -= tokens_to_use
         return True
 
@@ -239,10 +238,10 @@ class FloofBot(Plugin):
         if event.sender != "@kaesa:neoshadow.co" and "@kaesa:neoshadow.co" not in mentions:
             limit = 200
         if floof_count > limit:
-            if not self._allow_ratelimit(event.sender, count=-25):
+            if not self._allow_ratelimit(event.sender, 0.75):
                 return await event.react(self.ratelimit_overflow_reaction)
             return await event.reply(self.count_overflow_message, allow_html=True, markdown=False)
-        if not self._allow_ratelimit(event.sender, floof_count):
+        if not self._allow_ratelimit(event.sender, 1 + floof_count * 0.01):
             return await event.react(self.ratelimit_overflow_reaction)
         target_html_parts = []
         per_user_floofs = int(floof_count / len(mentions))
