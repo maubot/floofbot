@@ -150,6 +150,16 @@ class FloofBot(Plugin):
                 strongend = "</strong>"
             yield f"<br>{strong}#{i+1}: {self._make_mention(user_id)}: {count} ({count / total_floofs * 100:.1f}%){strongend}</li>"
 
+    def _floof_cost(self, x: int) -> float:
+        return max(
+            1,
+            0.02 * min(x, 300)
+            + 0.01 * max(0, min(x, 500) - 300)
+            + 0.02 * max(0, min(x, 800) - 500)
+            + 0.03 * max(0, min(x, 950) - 800)
+            + 0.01 * max(0, x - 950),
+        )
+
     @command.new("floofboars")
     async def floofboars(self, event: MessageEvent) -> None:
         await event.react("🐗")
@@ -241,7 +251,7 @@ class FloofBot(Plugin):
             if not self._allow_ratelimit(event.sender, 0.75):
                 return await event.react(self.ratelimit_overflow_reaction)
             return await event.reply(self.count_overflow_message, allow_html=True, markdown=False)
-        if not self._allow_ratelimit(event.sender, 1 + floof_count * 0.01):
+        if not self._allow_ratelimit(event.sender, self._floof_cost(floof_count)):
             return await event.react(self.ratelimit_overflow_reaction)
         target_html_parts = []
         per_user_floofs = int(floof_count / len(mentions))
