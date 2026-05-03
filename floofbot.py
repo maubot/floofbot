@@ -259,6 +259,7 @@ class FloofBot(Plugin):
         if floof_count > limit:
             return await event.reply(self.count_overflow_message, allow_html=True, markdown=False)
         target_html_parts = []
+        target_text_parts = []
         per_user_floofs = int(floof_count / len(mentions))
         current_time = int(time.time() * 1000)
         async with self.database.acquire() as conn, conn.transaction():
@@ -272,6 +273,7 @@ class FloofBot(Plugin):
                 target_html_parts.append(
                     f'<a href="{MatrixURI.build(user_id).matrix_to_url}">{html.escape(displayname)}</a>'
                 )
+                target_text_parts.append(displayname)
                 await conn.execute(
                     "INSERT INTO floofeeboard (user_id, count) VALUES ($1, $2) "
                     "ON CONFLICT (user_id) DO UPDATE SET count=floofeeboard.count + excluded.count",
@@ -287,13 +289,20 @@ class FloofBot(Plugin):
                     per_user_floofs,
                 )
 
+        alt_text = f"{floof_count} floofs"
+        if len(mentions) > 1:
+            alt_text += f" ({per_user_floofs} per recipient)"
+        first_floof_with_alt = " " + self.floof_html[:-1] + f' alt="{alt_text}" >'
         return await event.respond(
-            " ".join(target_html_parts) + " " + (self.floof_html * floof_count),
+            " ".join(target_html_parts)
+            + first_floof_with_alt
+            + (self.floof_html * (floof_count - 1)),
             allow_html=True,
             markdown=False,
             extra_content={
+                "body": f"{alt_text} to {", ".join(target_text_parts)}",
                 "m.mentions": {
                     "user_ids": list(mentions.keys()),
-                }
+                },
             },
         )
