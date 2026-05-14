@@ -1,5 +1,6 @@
 from typing import Iterable
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 import html
 import time
 
@@ -31,6 +32,7 @@ class Config(BaseProxyConfig):
         helper.copy("ratelimit_overflow_reaction")
         helper.copy("ratelimit_capacity")
         helper.copy("ratelimit_refill_per")
+        helper.copy("birthdays")
 
 
 upgrade_table = UpgradeTable()
@@ -79,6 +81,7 @@ class FloofBot(Plugin):
     ratelimit_overflow_reaction: str
     count_overflow_message: str
     floof_html: str
+    birthdays: dict[tuple[int, int], list[UserID]]
     parser = EntityParser()
 
     async def start(self) -> None:
@@ -100,6 +103,9 @@ class FloofBot(Plugin):
         self.ratelimit_overflow_reaction = self.config["ratelimit_overflow_reaction"]
         self.count_overflow_message = self.config["count_overflow_message"]
         self.floof_html = self.config["floof"]
+        self.birthdays = {}
+        for user_id, (month, day) in self.config["birthdays"].items():
+            self.birthdays.setdefault((month, day), []).append(user_id)
 
     def _get_bucket(self, user_id: UserID) -> RateLimitBucket:
         now = time.monotonic()
@@ -248,7 +254,10 @@ class FloofBot(Plugin):
         was_encrypted = event.get("mautrix", {}).get("was_encrypted", False)
         limit = 950 if was_encrypted else 1200
         cost_multiplier = 1
-        if event.sender != "@kaesa:neoshadow.co" and "@kaesa:neoshadow.co" not in mentions:
+        df = datetime.now() - timedelta(hours=6)
+        current_date = (df.month, df.day)
+        privileged_senders = ["@kaesa:neoshadow.co", *self.birthdays.get(current_date, [])]
+        if not any(event.sender == x or x in mentions for x in privileged_senders):
             limit = 200
             cost_multiplier = 1.2
         if not self._allow_ratelimit(

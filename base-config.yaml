@@ -4,3 +4,4 @@ count_overflow_message: >
 ratelimit_overflow_reaction: mxc://9f.fi/e
 ratelimit_capacity: 2.5
 ratelimit_refill_per: 300
+birthdays: {}
