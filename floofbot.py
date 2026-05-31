@@ -33,6 +33,7 @@ class Config(BaseProxyConfig):
         helper.copy("ratelimit_capacity")
         helper.copy("ratelimit_refill_per")
         helper.copy("birthdays")
+        helper.copy("addicted_users")
 
 
 upgrade_table = UpgradeTable()
@@ -82,11 +83,14 @@ class FloofBot(Plugin):
     count_overflow_message: str
     floof_html: str
     birthdays: dict[tuple[int, int], list[UserID]]
+    addicted_users: set[UserID]
     parser = EntityParser()
 
     async def start(self) -> None:
         self.flood_tracker = {}
         self.on_external_config_update()
+        for user in self.addicted_users:
+            self._get_bucket(user).count = -15
 
     @classmethod
     def get_config_class(cls) -> type[BaseProxyConfig]:
@@ -106,6 +110,7 @@ class FloofBot(Plugin):
         self.birthdays = {}
         for user_id, (month, day) in self.config["birthdays"].items():
             self.birthdays.setdefault((month, day), []).append(user_id)
+        self.addicted_users = set(self.config["addicted_users"])
 
     def _get_bucket(self, user_id: UserID) -> RateLimitBucket:
         now = time.monotonic()
@@ -128,7 +133,7 @@ class FloofBot(Plugin):
         # This intentionally checks against 1 instead of tokens_to_use: going negative is allowed
         if bucket.count < 1:
             # Overdraft fee
-            bucket.count -= 0.25
+            bucket.count -= 2.5 if user_id in self.addicted_users else 0.25
             return False
         bucket.count -= tokens_to_use
         return True
@@ -139,7 +144,7 @@ class FloofBot(Plugin):
         if unused == ":3":
             await event.react(":3")
         bucket = self._get_bucket(event.sender)
-        bucket.count -= 0.1
+        bucket.count -= 1 if user_id in self.addicted_users else 0.1
         await event.react(f"{bucket.count:.2f}")
 
     def _make_mention(self, user_id: UserID) -> str:
@@ -227,7 +232,7 @@ class FloofBot(Plugin):
             },
         )
 
-    @command.new("floof", aliases=["floo", "*****"])
+    @command.new("floof", aliases=["floo", "*****", "ploof", "ploo"])
     @command.argument("floof_count", parser=int, label="floof count")
     @command.argument("target", pass_raw=True, label="targets...")
     async def floof(self, event: MessageEvent, floof_count: int, target: str) -> EventID:
@@ -243,8 +248,8 @@ class FloofBot(Plugin):
                 mentions[ent.extra_info["user_id"]] = displayname
         if not mentions:
             return await event.reply("Floof target users must be specified as @mentions in HTML")
-        elif len(mentions) > 5:
-            return await event.reply("You can only floof up to 5 users at a time")
+        elif len(mentions) > 12:
+            return await event.reply("You can only floof up to 12 users at a time")
         elif event.sender in mentions:
             return await event.reply("You cannot floof yourself")
         elif floof_count < len(mentions):
@@ -258,8 +263,10 @@ class FloofBot(Plugin):
         current_date = (df.month, df.day)
         privileged_senders = ["@kaesa:neoshadow.co", *self.birthdays.get(current_date, [])]
         if not any(event.sender == x or x in mentions for x in privileged_senders):
-            limit = 200
+            # limit = 200
             cost_multiplier = 1.2
+        if event.sender in self.addicted_users:
+            cost_multiplier *= 1.5
         if not self._allow_ratelimit(
             event.sender,
             0.75 if floof_count > limit else (self._floof_cost(floof_count) * cost_multiplier),
@@ -310,8 +317,6 @@ class FloofBot(Plugin):
             markdown=False,
             extra_content={
                 "body": f"{alt_text} to {", ".join(target_text_parts)}",
-                "m.mentions": {
-                    "user_ids": list(mentions.keys()),
-                },
+                "m.mentions": {},
             },
         )
