@@ -144,7 +144,7 @@ class FloofBot(Plugin):
         if unused == ":3":
             await event.react(":3")
         bucket = self._get_bucket(event.sender)
-        bucket.count -= 1 if user_id in self.addicted_users else 0.1
+        bucket.count -= 1 if event.sender in self.addicted_users else 0.1
         await event.react(f"{bucket.count:.2f}")
 
     def _make_mention(self, user_id: UserID) -> str:
