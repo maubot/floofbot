@@ -262,9 +262,11 @@ class FloofBot(Plugin):
         df = datetime.now() - timedelta(hours=6)
         current_date = (df.month, df.day)
         privileged_senders = ["@kaesa:neoshadow.co", *self.birthdays.get(current_date, [])]
-        if not any(event.sender == x or x in mentions for x in privileged_senders):
-            # limit = 200
-            cost_multiplier = 1.2
+        # if not any(event.sender == x or x in mentions for x in privileged_senders):
+        #    limit = 200
+        #    cost_multiplier = 1.2
+        if len(mentions) > 1:
+            cost_multiplier = 1.05 ** len(mentions)
         if event.sender in self.addicted_users:
             cost_multiplier *= 1.5
         if not self._allow_ratelimit(
