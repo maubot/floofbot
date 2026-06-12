@@ -232,7 +232,7 @@ class FloofBot(Plugin):
             },
         )
 
-    @command.new("floof", aliases=["floo", "*****", "ploof", "ploo"])
+    @command.new("floof")
     @command.argument("floof_count", parser=int, label="floof count")
     @command.argument("target", pass_raw=True, label="targets...")
     async def floof(self, event: MessageEvent, floof_count: int, target: str) -> EventID:
