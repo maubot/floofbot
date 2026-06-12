@@ -238,6 +238,8 @@ class FloofBot(Plugin):
     async def floof(self, event: MessageEvent, floof_count: int, target: str) -> EventID:
         if not event.content.formatted_body:
             return await event.reply("Floof target users must be specified as @mentions in HTML")
+        elif "m.mentions" not in event.content:
+            return await event.reply("Using intentional mentions is required when floofing")
         es = await self.parser.parse(event.content.formatted_body)
         mentions: dict[UserID, str] = {}
         for ent in es.entities:
