@@ -5,8 +5,8 @@ import html
 import time
 
 from maubot import MessageEvent, Plugin
-from maubot.handlers import command
-from mautrix.types import EventID, MatrixURI, UserID
+from maubot.handlers import command, event
+from mautrix.types import EventID, EventType, MatrixURI, MessageType, UserID
 from mautrix.util.async_db import Connection, Database, Scheme, UpgradeTable
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from mautrix.util.formatter import EntityString, EntityType, MatrixParser, SimpleEntity
@@ -137,6 +137,11 @@ class FloofBot(Plugin):
             return False
         bucket.count -= tokens_to_use
         return True
+
+    @event.on(EventType.ROOM_MESSAGE)
+    async def ploo(self, event: MessageEvent) -> None:
+        if event.content.msgtype == MessageType.TEXT and event.content.body.startswith("?ploo"):
+            await event.react("mxc://9f.fi/f")
 
     @command.new("furrylimit", aliases=["fluffylimit", "flooflimit", "floolimit"])
     @command.argument("unused", pass_raw=True, required=False)
