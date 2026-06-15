@@ -6,3 +6,4 @@ ratelimit_capacity: 2.5
 ratelimit_refill_per: 300
 birthdays: {}
 addicted_users: []
+opted_out: []

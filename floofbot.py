@@ -34,6 +34,7 @@ class Config(BaseProxyConfig):
         helper.copy("ratelimit_refill_per")
         helper.copy("birthdays")
         helper.copy("addicted_users")
+        helper.copy("opted_out")
 
 
 upgrade_table = UpgradeTable()
@@ -84,6 +85,7 @@ class FloofBot(Plugin):
     floof_html: str
     birthdays: dict[tuple[int, int], list[UserID]]
     addicted_users: set[UserID]
+    opted_out: set[UserID]
     parser = EntityParser()
 
     async def start(self) -> None:
@@ -91,6 +93,8 @@ class FloofBot(Plugin):
         self.on_external_config_update()
         for user in self.addicted_users:
             self._get_bucket(user).count = -15
+        for user in self.opted_out:
+            self._get_bucket(user)
 
     @classmethod
     def get_config_class(cls) -> type[BaseProxyConfig]:
@@ -111,6 +115,7 @@ class FloofBot(Plugin):
         for user_id, (month, day) in self.config["birthdays"].items():
             self.birthdays.setdefault((month, day), []).append(user_id)
         self.addicted_users = set(self.config["addicted_users"])
+        self.opted_out = set(self.config["opted_out"])
 
     def _get_bucket(self, user_id: UserID) -> RateLimitBucket:
         now = time.monotonic()
@@ -120,12 +125,14 @@ class FloofBot(Plugin):
             bucket = self.flood_tracker[user_id] = RateLimitBucket(
                 user_id=user_id,
                 last_timestamp=now,
-                count=self.ratelimit_capacity,
+                count=-299 if user_id in self.opted_out else self.ratelimit_capacity,
             )
         else:
             tokens_to_add = (now - bucket.last_timestamp) * self.ratelimit_rate
             bucket.count = min(self.ratelimit_capacity, bucket.count + tokens_to_add)
             bucket.last_timestamp = now
+            if user_id in self.opted_out:
+                bucket.count = -299
         return bucket
 
     def _allow_ratelimit(self, user_id: UserID, tokens_to_use: float) -> bool:
@@ -140,7 +147,11 @@ class FloofBot(Plugin):
 
     @event.on(EventType.ROOM_MESSAGE)
     async def ploo(self, event: MessageEvent) -> None:
-        if event.content.msgtype == MessageType.TEXT and event.content.body.startswith("?ploo"):
+        if (
+            event.content.msgtype == MessageType.TEXT
+            and event.content.body.startswith("?ploo")
+            and event.sender not in self.opted_out
+        ):
             await event.react("mxc://9f.fi/f")
 
     @command.new("furrylimit", aliases=["fluffylimit", "flooflimit", "floolimit"])
@@ -159,7 +170,11 @@ class FloofBot(Plugin):
         self, items: list[tuple[UserID, int]], own_user_id: UserID
     ) -> Iterable[str]:
         total_floofs = sum(count for _, count in items)
-        for i, (user_id, count) in enumerate(items):
+        i = -1
+        for user_id, count in items:
+            if user_id in self.opted_out:
+                continue
+            i += 1
             if i > 4 and user_id != own_user_id:
                 continue
             strong = strongend = ""
@@ -180,7 +195,32 @@ class FloofBot(Plugin):
 
     @command.new("floofboars")
     async def floofboars(self, event: MessageEvent) -> None:
-        await event.react("🐗")
+        if event.sender not in self.opted_out:
+            await event.react("🐗")
+
+    @command.new("floofout")
+    async def floofout(self, event: MessageEvent) -> None:
+        if event.sender in self.opted_out:
+            await event.reply("You have already opted out of floofing")
+            return
+        elif event.sender == "@kaesa:neoshadow.co":
+            await event.reply("The floofy pet mascot can't opt out of floofing")
+            return
+        self.opted_out.add(event.sender)
+        self.config["opted_out"] = list(self.opted_out)
+        self.config.save()
+        await event.reply("You have opted out of floofing")
+
+    @command.new("floofin")
+    async def floofin(self, event: MessageEvent) -> None:
+        if event.sender not in self.opted_out:
+            await event.reply("You haven't opted out of floofing")
+            return
+        self._get_bucket(event.sender)  # Reset the bucket count to -99
+        self.opted_out.remove(event.sender)
+        self.config["opted_out"] = list(self.opted_out)
+        self.config.save()
+        await event.reply("You have opted back into floofing")
 
     @command.new(
         "floofboard",
@@ -206,14 +246,8 @@ class FloofBot(Plugin):
                 event.sender,
             )
 
-        output = [
+        own_top = [
             "<p>",
-            f"<b>Floofees</b> ({len(floofees)} total users)",
-            *self._make_floof_list(floofees, event.sender),
-            "</p><p>",
-            f"<b>Floofers</b> ({len(floofers)} total users)",
-            *self._make_floof_list(floofers, event.sender),
-            "</p><p>",
             (
                 f"Your top floofer is {self._make_mention(own_top_floofer["user_id"])} ({own_top_floofer["count"]} floofs)"
                 if own_top_floofer
@@ -226,6 +260,18 @@ class FloofBot(Plugin):
                 else "You haven't floofed anyone yet"
             ),
             "</p>",
+        ]
+        if event.sender in self.opted_out:
+            own_top = ["<p>You have opted out of floofing</p>"]
+        output = [
+            "<p>",
+            f"<b>Floofees</b> ({len(floofees)} total users)",
+            *self._make_floof_list(floofees, event.sender),
+            "</p><p>",
+            f"<b>Floofers</b> ({len(floofers)} total users)",
+            *self._make_floof_list(floofers, event.sender),
+            "</p>",
+            *own_top,
         ]
         await event.reply(
             "\n".join(output),
@@ -263,6 +309,11 @@ class FloofBot(Plugin):
             return await event.reply(
                 f"You must include at least one floof per recipient ({floof_count} < {len(mentions)})"
             )
+        for user_id in list(mentions.keys()):
+            if user_id in self.opted_out:
+                mentions.pop(user_id)
+        if len(mentions) == 0:
+            return await event.reply("All of the target users have opted out of being floofed")
         was_encrypted = event.get("mautrix", {}).get("was_encrypted", False)
         limit = 950 if was_encrypted else 1200
         cost_multiplier = 1
