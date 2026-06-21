@@ -35,6 +35,7 @@ class Config(BaseProxyConfig):
         helper.copy("birthdays")
         helper.copy("addicted_users")
         helper.copy("opted_out")
+        helper.copy("admins")
 
 
 upgrade_table = UpgradeTable()
@@ -222,6 +223,29 @@ class FloofBot(Plugin):
         self.config.save()
         await event.reply("You have opted back into floofing")
 
+    @command.new("floofreindex")
+    async def floofreindex(self, event: MessageEvent) -> None:
+        if event.sender not in self.config["admins"]:
+            return
+        start = time.monotonic()
+        async with self.database.acquire() as conn, conn.transaction():
+            await conn.execute("DELETE FROM flooferboard")
+            await conn.execute("DELETE FROM floofeeboard")
+            await conn.execute("""
+                INSERT INTO flooferboard (user_id, count)
+                SELECT floofer, SUM(count) AS count
+                FROM floof
+                GROUP BY 1
+            """)
+            await conn.execute("""
+                INSERT INTO floofeeboard (user_id, count)
+                SELECT floofee, SUM(count) AS count
+                FROM floof
+                GROUP BY 1
+            """)
+        duration = (time.monotonic() - start) * 1000.0
+        await event.reply(f"Reindexed floofboard in {duration:.2f} ms")
+
     @command.new(
         "floofboard",
         aliases=["flooboard", "furryboard", "fluffyboard", "flooferboard", "floofeeboard"],
@@ -339,6 +363,7 @@ class FloofBot(Plugin):
         target_html_parts = []
         target_text_parts = []
         per_user_floofs = int(floof_count / len(mentions))
+        floof_count = per_user_floofs * len(mentions)
         current_time = int(time.time() * 1000)
         async with self.database.acquire() as conn, conn.transaction():
             await conn.execute(

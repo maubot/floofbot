@@ -7,3 +7,4 @@ ratelimit_refill_per: 300
 birthdays: {}
 addicted_users: []
 opted_out: []
+admins: []
