@@ -339,7 +339,7 @@ class FloofBot(Plugin):
         if len(mentions) == 0:
             return await event.reply("All of the target users have opted out of being floofed")
         was_encrypted = event.get("mautrix", {}).get("was_encrypted", False)
-        limit = 950 if was_encrypted else 1200
+        limit = 900 if was_encrypted else 1200
         cost_multiplier = 1
         df = datetime.now() - timedelta(hours=6)
         current_date = (df.month, df.day)
