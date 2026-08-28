@@ -7,6 +7,7 @@ import time
 from maubot import MessageEvent, Plugin
 from maubot.handlers import command, event
 from mautrix.types import EventID, EventType, MatrixURI, MessageType, UserID
+from mautrix.util import background_task
 from mautrix.util.async_db import Connection, Database, Scheme, UpgradeTable
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from mautrix.util.formatter import EntityString, EntityType, MatrixParser, SimpleEntity
@@ -76,6 +77,9 @@ async def upgrade_v2(conn: Connection, scheme: Scheme) -> None:
     """)
 
 
+FLOOF_EXPIRY = int(timedelta(days=30).total_seconds() * 1000)
+
+
 class FloofBot(Plugin):
     database: Database
     flood_tracker: dict[UserID, RateLimitBucket]
@@ -88,6 +92,7 @@ class FloofBot(Plugin):
     addicted_users: set[UserID]
     opted_out: set[UserID]
     parser = EntityParser()
+    floof_cutoff: int
 
     async def start(self) -> None:
         self.flood_tracker = {}
@@ -96,6 +101,7 @@ class FloofBot(Plugin):
             self._get_bucket(user).count = -15
         for user in self.opted_out:
             self._get_bucket(user)
+        background_task.create(self._floofreindex())
 
     @classmethod
     def get_config_class(cls) -> type[BaseProxyConfig]:
@@ -204,9 +210,6 @@ class FloofBot(Plugin):
         if event.sender in self.opted_out:
             await event.reply("You have already opted out of floofing")
             return
-        elif event.sender == "@kaesa:neoshadow.co":
-            await event.reply("The floofy pet mascot can't opt out of floofing")
-            return
         self.opted_out.add(event.sender)
         self.config["opted_out"] = list(self.opted_out)
         self.config.save()
@@ -228,23 +231,35 @@ class FloofBot(Plugin):
         if event.sender not in self.config["admins"]:
             return
         start = time.monotonic()
+        await self._floofreindex()
+        duration = (time.monotonic() - start) * 1000.0
+        await event.reply(f"Reindexed floofboard in {duration:.2f} ms")
+
+    async def _floofreindex(self) -> None:
+        self.floof_cutoff = int(time.time() * 1000) - FLOOF_EXPIRY
         async with self.database.acquire() as conn, conn.transaction():
             await conn.execute("DELETE FROM flooferboard")
             await conn.execute("DELETE FROM floofeeboard")
-            await conn.execute("""
-                INSERT INTO flooferboard (user_id, count)
-                SELECT floofer, SUM(count) AS count
-                FROM floof
-                GROUP BY 1
-            """)
-            await conn.execute("""
-                INSERT INTO floofeeboard (user_id, count)
-                SELECT floofee, SUM(count) AS count
-                FROM floof
-                GROUP BY 1
-            """)
-        duration = (time.monotonic() - start) * 1000.0
-        await event.reply(f"Reindexed floofboard in {duration:.2f} ms")
+            await conn.execute(
+                """
+                    INSERT INTO flooferboard (user_id, count)
+                    SELECT floofer, SUM(count) AS count
+                    FROM floof
+                    WHERE timestamp > $1
+                    GROUP BY 1
+                """,
+                self.floof_cutoff,
+            )
+            await conn.execute(
+                """
+                    INSERT INTO floofeeboard (user_id, count)
+                    SELECT floofee, SUM(count) AS count
+                    FROM floof
+                    WHERE timestamp > $1
+                    GROUP BY 1
+                """,
+                self.floof_cutoff,
+            )
 
     @command.new(
         "floofboard",
@@ -262,12 +277,14 @@ class FloofBot(Plugin):
                 "SELECT user_id, count FROM floofeeboard ORDER BY count DESC"
             )
             own_top_floofee = await conn.fetchrow(
-                "SELECT floofee AS user_id, SUM(count) AS count FROM floof WHERE floofer=$1 GROUP BY 1 ORDER BY 2 DESC LIMIT 1",
+                "SELECT floofee AS user_id, SUM(count) AS count FROM floof WHERE floofer=$1 AND timestamp > $2 GROUP BY 1 ORDER BY 2 DESC LIMIT 1",
                 event.sender,
+                self.floof_cutoff,
             )
             own_top_floofer = await conn.fetchrow(
-                "SELECT floofer AS user_id, SUM(count) AS count FROM floof WHERE floofee=$1 GROUP BY 1 ORDER BY 2 DESC LIMIT 1",
+                "SELECT floofer AS user_id, SUM(count) AS count FROM floof WHERE floofee=$1 AND timestamp > $2 GROUP BY 1 ORDER BY 2 DESC LIMIT 1",
                 event.sender,
+                self.floof_cutoff,
             )
 
         own_top = [
