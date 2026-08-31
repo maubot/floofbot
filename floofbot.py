@@ -152,15 +152,6 @@ class FloofBot(Plugin):
         bucket.count -= tokens_to_use
         return True
 
-    @event.on(EventType.ROOM_MESSAGE)
-    async def ploo(self, event: MessageEvent) -> None:
-        if (
-            event.content.msgtype == MessageType.TEXT
-            and event.content.body.startswith("?ploo")
-            and event.sender not in self.opted_out
-        ):
-            await event.react("mxc://9f.fi/f")
-
     @command.new("furrylimit", aliases=["fluffylimit", "flooflimit", "floolimit"])
     @command.argument("unused", pass_raw=True, required=False)
     async def furry_limit(self, event: MessageEvent, unused: str = "") -> None:
