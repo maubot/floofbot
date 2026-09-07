@@ -1,7 +1,9 @@
 from typing import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import asyncio
 import html
+import json
 import time
 
 from maubot import MessageEvent, Plugin
@@ -77,6 +79,16 @@ async def upgrade_v2(conn: Connection, scheme: Scheme) -> None:
     """)
 
 
+@upgrade_table.register(description="Add ratelimit storage table", upgrades_to=3)
+async def upgrade_v3(conn: Connection, scheme: Scheme) -> None:
+    await conn.execute("""
+        CREATE TABLE ratelimit (
+            key  INTEGER PRIMARY KEY,
+            blob TEXT    NOT NULL
+        );
+    """)
+
+
 FLOOF_EXPIRY = int(timedelta(days=30).total_seconds() * 1000)
 
 
@@ -93,15 +105,16 @@ class FloofBot(Plugin):
     opted_out: set[UserID]
     parser = EntityParser()
     floof_cutoff: int
+    ratelimit_save_lock: asyncio.Lock
 
     async def start(self) -> None:
         self.flood_tracker = {}
+        self.ratelimit_save_lock = asyncio.Lock()
         self.on_external_config_update()
-        for user in self.addicted_users:
-            self._get_bucket(user).count = -15
         for user in self.opted_out:
             self._get_bucket(user)
         background_task.create(self._floofreindex())
+        await self._load_ratelimits()
 
     @classmethod
     def get_config_class(cls) -> type[BaseProxyConfig]:
@@ -123,6 +136,35 @@ class FloofBot(Plugin):
             self.birthdays.setdefault((month, day), []).append(user_id)
         self.addicted_users = set(self.config["addicted_users"])
         self.opted_out = set(self.config["opted_out"])
+
+    async def _load_ratelimits(self) -> None:
+        data = await self.database.fetchval("SELECT blob FROM ratelimit WHERE key=1")
+        if not data:
+            return
+        parsed_data = json.loads(data)
+        wall_to_mono = time.monotonic() - time.time()
+        for user_id, bucket in parsed_data.items():
+            self.flood_tracker[user_id] = RateLimitBucket(
+                user_id=UserID(user_id),
+                last_timestamp=bucket["last_timestamp"] + wall_to_mono,
+                count=bucket["count"],
+            )
+
+    async def _save_ratelimits(self) -> None:
+        async with self.ratelimit_save_lock:
+            mono_to_wall = time.time() - time.monotonic()
+            data = {
+                user_id: {
+                    "last_timestamp": bucket.last_timestamp + mono_to_wall,
+                    "count": bucket.count,
+                }
+                for user_id, bucket in self.flood_tracker.items()
+                if user_id not in self.opted_out
+            }
+            await self.database.execute(
+                "INSERT INTO ratelimit (key, blob) VALUES (1, $1) ON CONFLICT (key) DO UPDATE SET blob = excluded.blob",
+                json.dumps(data),
+            )
 
     def _get_bucket(self, user_id: UserID) -> RateLimitBucket:
         now = time.monotonic()
@@ -402,7 +444,7 @@ class FloofBot(Plugin):
         if len(mentions) > 1:
             alt_text += f" ({per_user_floofs} per recipient)"
         first_floof_with_alt = " " + self.floof_html[:-1] + f' alt="{alt_text}" >'
-        return await event.respond(
+        evt_id = await event.respond(
             " ".join(target_html_parts)
             + first_floof_with_alt
             + (self.floof_html * (floof_count - 1)),
@@ -413,3 +455,5 @@ class FloofBot(Plugin):
                 "m.mentions": {},
             },
         )
+        await self._save_ratelimits()
+        return evt_id
