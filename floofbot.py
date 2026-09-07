@@ -132,14 +132,14 @@ class FloofBot(Plugin):
             bucket = self.flood_tracker[user_id] = RateLimitBucket(
                 user_id=user_id,
                 last_timestamp=now,
-                count=-299 if user_id in self.opted_out else self.ratelimit_capacity,
+                count=-9001 if user_id in self.opted_out else self.ratelimit_capacity,
             )
         else:
             tokens_to_add = (now - bucket.last_timestamp) * self.ratelimit_rate
             bucket.count = min(self.ratelimit_capacity, bucket.count + tokens_to_add)
             bucket.last_timestamp = now
             if user_id in self.opted_out:
-                bucket.count = -299
+                bucket.count = -9001
         return bucket
 
     def _allow_ratelimit(self, user_id: UserID, tokens_to_use: float) -> bool:
@@ -147,7 +147,7 @@ class FloofBot(Plugin):
         # This intentionally checks against 1 instead of tokens_to_use: going negative is allowed
         if bucket.count < 1:
             # Overdraft fee
-            bucket.count -= 2.5 if user_id in self.addicted_users else 0.25
+            bucket.count -= 250 if user_id in self.addicted_users else 50
             return False
         bucket.count -= tokens_to_use
         return True
@@ -158,8 +158,9 @@ class FloofBot(Plugin):
         if unused == ":3":
             await event.react(":3")
         bucket = self._get_bucket(event.sender)
-        bucket.count -= 1 if event.sender in self.addicted_users else 0.1
-        await event.react(f"{bucket.count:.2f}")
+        # Balance query fee
+        bucket.count -= 100 if event.sender in self.addicted_users else 10
+        await event.react(f"{bucket.count:.0f}")
 
     def _make_mention(self, user_id: UserID) -> str:
         return f'<a href="{MatrixURI.build(user_id).matrix_to_url}">{html.escape(user_id)}</a>'
@@ -181,15 +182,10 @@ class FloofBot(Plugin):
                 strongend = "</strong>"
             yield f"<br>{strong}#{i+1}: {self._make_mention(user_id)}: {count} ({count / total_floofs * 100:.1f}%){strongend}</li>"
 
-    def _floof_cost(self, x: int) -> float:
-        return max(
-            1,
-            0.02 * min(x, 300)
-            + 0.01 * max(0, min(x, 500) - 300)
-            + 0.02 * max(0, min(x, 800) - 500)
-            + 0.03 * max(0, min(x, 950) - 800)
-            + 0.01 * max(0, x - 950),
-        )
+    def _floof_cost(self, x: int) -> int:
+        if x <= 50:
+            return max(x, 10)
+        return 50 + ((x + 49) * (x - 50)) // 100
 
     @command.new("floofboars")
     async def floofboars(self, event: MessageEvent) -> None:
@@ -323,6 +319,8 @@ class FloofBot(Plugin):
             return await event.reply("Floof target users must be specified as @mentions in HTML")
         elif "m.mentions" not in event.content:
             return await event.reply("Using intentional mentions is required when floofing")
+        elif abs((time.time() * 1000) - event.timestamp) > 30000:
+            return await event.react("\u23f0\ufe0f")
         es = await self.parser.parse(event.content.formatted_body)
         mentions: dict[UserID, str] = {}
         for ent in es.entities:
@@ -352,7 +350,7 @@ class FloofBot(Plugin):
         df = datetime.now() - timedelta(hours=6)
         current_date = (df.month, df.day)
         if len(mentions) > 1:
-            cost_multiplier = 1.05 ** len(mentions)
+            cost_multiplier = 1.1 ** len(mentions)
         if event.sender in self.addicted_users:
             cost_multiplier *= 1.5
         privileged_senders = self.birthdays.get(current_date, [])
@@ -360,10 +358,10 @@ class FloofBot(Plugin):
             len(mentions) <= len(privileged_senders)
             and all(x in privileged_senders for x in mentions.keys())
         ):
-            cost_multiplier = 0.9
+            cost_multiplier = 0.8
         if not self._allow_ratelimit(
             event.sender,
-            0.75 if floof_count > limit else (self._floof_cost(floof_count) * cost_multiplier),
+            50 if floof_count > limit else (self._floof_cost(floof_count) * cost_multiplier),
         ):
             return await event.react(self.ratelimit_overflow_reaction)
         if floof_count > limit:

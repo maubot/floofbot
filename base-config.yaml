@@ -3,9 +3,9 @@ count_overflow_message: >
   Floof overflow <img src="mxc://9f.fi/e" alt=":neocat_floof_explode:" title=":neocat_floof_explode:" data-mx-emoticon height="32">
 ratelimit_overflow_reaction: mxc://9f.fi/e
 # How many tokens can you have at most?
-ratelimit_capacity: 2.5
+ratelimit_capacity: 50
 # How many seconds does it take for 1 token to refill?
-ratelimit_refill_per: 300
+ratelimit_refill_per: 6
 # Birthdays of users as a user ID -> [month, day] map. Month and day are 1-indexed.
 birthdays: {}
 # List of addicted users who get higher floofing fees.
